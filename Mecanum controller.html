@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mecanum Robot Controller</title>
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --success-color: #4CAF50;
+            --error-color: #f44336;
+            --dark-bg: #1a1a1a;
+            --light-text: #ffffff;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .connection-status {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--error-color);
+        }
+
+        .status-indicator.connected {
+            background-color: var(--success-color);
+        }
+
+        .connect-btn {
+            padding: 10px 20px;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: opacity 0.3s;
+        }
+
+        .connect-btn:hover {
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+
+        .control-btn {
+            padding: 20px;
+            background-color: #333;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-size: 24px;
+            transition: background-color 0.3s;
+        }
+
+        .control-btn:hover {
+            background-color: #444;
+        }
+
+        .control-btn:active {
+            background-color: var(--primary-color);
+        }
+
+        .mode-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .keyboard-guide {
+            margin-top: 20px;
+            text-align: center;
+            padding: 20px;
+            background-color: #333;
+            border-radius: 5px;
+        }
+
+        .keyboard-guide h3 {
+            margin-top: 0;
+        }
+
+        .race-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 300px;
+            margin: 20px auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Mecanum Robot Controller</h1>
+        </div>
+
+        <div class="connection-status">
+            <div id="statusIndicator" class="status-indicator"></div>
+            <span id="statusText">Disconnected</span>
+            <button id="connectBtn" class="connect-btn">Connect to Robot</button>
+        </div>
+
+        <div class="mode-controls">
+            <button id="normalModeBtn" class="connect-btn">Normal Mode</button>
+            <button id="raceModeBtn" class="connect-btn">Race Mode</button>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn" data-key="Q">↖</button>
+            <button class="control-btn" data-key="W">↑</button>
+            <button class="control-btn" data-key="E">↗</button>
+            <button class="control-btn" data-key="A">←</button>
+            <button class="control-btn" data-key="S">■</button>
+            <button class="control-btn" data-key="D">→</button>
+            <button class="control-btn" data-key="Z">↙</button>
+            <button class="control-btn" data-key="X">↓</button>
+            <button class="control-btn" data-key="C">↘</button>
+        </div>
+
+        <div class="race-controls" id="raceControls" style="display: none;">
+            <button class="control-btn" data-key="B">⟲</button>
+            <button class="control-btn" data-key="G">▲</button>
+            <button class="control-btn" data-key="H">⟳</button>
+        </div>
+
+        <div class="keyboard-guide">
+            <h3>Keyboard Controls</h3>
+            <p>Use QWEASDZXC keys for movement</p>
+            <p>Race Mode: B (Sharp Left), G (Boost), H (Sharp Right)</p>
+            <p>Space: Emergency Stop</p>
+            <p>R: Toggle Race Mode</p>
+        </div>
+    </div>
+
+    <script>
+        class MecanumRobotController {
+            constructor() {
+                this.device = null;
+                this.characteristic = null;
+                this.isConnected = false;
+                this.isRaceMode = false;
+                this.encoder = new TextEncoder();
+            }
+
+            async connect() {
+                try {
+                    const device = await navigator.bluetooth.requestDevice({
+                        filters: [{ namePrefix: 'BBC micro:bit' }],
+                        optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+                    });
+
+                    const server = await device.gatt.connect();
+                    const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+                    this.characteristic = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
+                    
+                    this.device = device;
+                    this.isConnected = true;
+                    this.updateConnectionStatus(true);
+                    
+                    device.addEventListener('gattserverdisconnected', () => {
+                        this.isConnected = false;
+                        this.updateConnectionStatus(false);
+                    });
+
+                } catch (error) {
+                    console.error('Connection failed:', error);
+                    this.updateConnectionStatus(false);
+                }
+            }
+
+            async sendCommand(command) {
+                if (!this.isConnected || !this.characteristic) return;
+                
+                try {
+                    const data = this.encoder.encode(command + '#');
+                    await this.characteristic.writeValue(data);
+                } catch (error) {
+                    console.error('Send failed:', error);
+                }
+            }
+
+            updateConnectionStatus(connected) {
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                const connectBtn = document.getElementById('connectBtn');
+
+                if (connected) {
+                    indicator.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                    connectBtn.textContent = 'Disconnect';
+                } else {
+                    indicator.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                    connectBtn.textContent = 'Connect to Robot';
+                }
+            }
+
+            toggleRaceMode() {
+                this.isRaceMode = !this.isRaceMode;
+                const raceControls = document.getElementById('raceControls');
+                raceControls.style.display = this.isRaceMode ? 'grid' : 'none';
+                
+                if (this.isRaceMode) {
+                    this.sendCommand('N'); // Enter race mode
+                } else {
+                    this.sendCommand('s'); // Exit race mode
+                }
+            }
+        }
+
+        // Initialize controller
+        const controller = new MecanumRobotController();
+
+        // Setup event listeners
+        document.getElementById('connectBtn').addEventListener('click', () => {
+            if (!controller.isConnected) {
+                controller.connect();
+            } else {
+                controller.device?.gatt.disconnect();
+            }
+        });
+
+        // Command mapping
+        const normalCommands = {
+            'W': 'A',  // Forward
+            'S': 'C',  // Stop
+            'A': 'B',  // Left
+            'D': 'D',  // Right
+            'X': 'E',  // Back
+            'Q': 'H',  // Forward-Left
+            'E': 'I',  // Forward-Right
+            'Z': 'J',  // Back-Left
+            'C': 'K',  // Back-Right
+        };
+
+        const raceCommands = {
+            'W': 'a',  // Forward
+            'A': 'b',  // Left
+            'S': 'c',  // Brake
+            'D': 'd',  // Right
+            'G': 'g',  // Boost
+            'B': 'k',  // Sharp Left
+            'H': 'h',  // Sharp Right
+        };
+
+        // Handle button clicks
+        document.querySelectorAll('.control-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const key = button.getAttribute('data-key');
+                const commands = controller.isRaceMode ? raceCommands : normalCommands;
+                const command = commands[key];
+                if (command) {
+                    controller.sendCommand(command);
+                }
+            });
+        });
+
+        // Handle keyboard input
+        document.addEventListener('keydown', (event) => {
+            const key = event.key.toUpperCase();
+            const commands = controller.isRaceMode ? raceCommands : normalCommands;
+            const command = commands[key];
+            
+            if (command) {
+                controller.sendCommand(command);
+            } else if (key === ' ') {
+                // Space bar for emergency stop
+                controller.sendCommand(controller.isRaceMode ? 'c' : 'C');
+            } else if (key === 'R') {
+                // R key to toggle race mode
+                controller.toggleRaceMode();
+            }
+        });
+
+        // Mode toggle buttons
+        document.getElementById('normalModeBtn').addEventListener('click', () => {
+            if (controller.isRaceMode) {
+                controller.toggleRaceMode();
+            }
+        });
+
+        document.getElementById('raceModeBtn').addEventListener('click', () => {
+            if (!controller.isRaceMode) {
+                controller.toggleRaceMode();
+            }
+        });
+    </script>
+</body>
+</html>
